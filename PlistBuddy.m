@@ -19,6 +19,7 @@ along with Darling.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <Foundation/Foundation.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdbool.h>
 
@@ -89,7 +90,7 @@ int main(int argc, const char **argv)
 	return EXIT_SUCCESS;
 }
 
-void printUsage()
+void printUsage(void)
 {
 	puts("Usage: PlistBuddy [-cxh] <file.plist>\n"
 			"    -c \"<command>\" execute command, otherwise run in interactive mode\n"
@@ -97,7 +98,7 @@ void printUsage()
 			"    -h print the complete help info, with command guide\n");
 }
 
-void printHelp()
+void printHelp(void)
 {
 	puts("Command Format:\n\n"
 	"    Help - Prints this information\n"
@@ -183,15 +184,13 @@ bool processArgs(int argc, const char** argv, const char** command)
 CFPropertyListRef loadPlist(const char* filePath)
 {
 	SInt32 errorCode = 0;
-	CFStringRef errorString = NULL;
-	CFDataRef data = NULL;
 	CFPropertyListRef plist;
 	CFStringRef path = CFStringCreateWithCString(kCFAllocatorDefault, filePath, kCFStringEncodingUTF8);
 	CFURLRef url = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, path, kCFURLPOSIXPathStyle, false);
 
 	CFRelease(path);
 
-	CFURLCreateDataAndPropertiesFromResource(kCFAllocatorDefault, url, &data, NULL, NULL, &errorCode);
+    NSData* data = [NSData dataWithContentsOfURL:(__bridge NSURL * _Nonnull)(url)];
 	CFRelease(url);
 
 	if (errorCode != 0)
@@ -200,7 +199,14 @@ CFPropertyListRef loadPlist(const char* filePath)
 		return false;
 	}
 
-	plist = CFPropertyListCreateFromXMLData(kCFAllocatorDefault, data, kCFPropertyListMutableContainers, &errorString);
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < 40000
+    CFStringRef errorString = NULL;
+    plist = CFPropertyListCreateFromXMLData(kCFAllocatorDefault, (__bridge CFDataRef)(data), kCFPropertyListMutableContainers, &errorString);
+#else
+    CFErrorRef errorString = NULL;
+    CFPropertyListFormat xml = kCFPropertyListXMLFormat_v1_0;
+    plist = CFPropertyListCreateWithData(kCFAllocatorDefault, (__bridge CFDataRef)(data), kCFPropertyListMutableContainers, &xml, &errorString);
+#endif
 
 	if (errorString != NULL)
 	{
@@ -247,12 +253,18 @@ bool saveToFile(void)
 
 	CFRelease(path);
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < 40000
 	data = CFPropertyListCreateXMLData(kCFAllocatorDefault, plist);
+#else
+    CFPropertyListFormat xml = kCFPropertyListXMLFormat_v1_0;
+    CFErrorRef err = NULL;
+    data = CFPropertyListCreateData(kCFAllocatorDefault, plist, xml, 0, &err);
+#endif
 	if (data != NULL)
 	{
 		SInt32 errorCode = 0;
 
-		CFURLWriteDataAndPropertiesToResource(url, data, NULL, &errorCode);
+        [(__bridge NSData *)(data) writeToURL:(__bridge NSURL * _Nonnull)(url) atomically:TRUE];
 		CFRelease(data);
 		
 		if (errorCode != 0)
@@ -770,23 +782,8 @@ CFPropertyListRef parseValue(enum PropertyType type, const char* string)
 				return NULL;
 			}
 
-			CFTimeZoneRef tz = CFTimeZoneCopyDefault();
-			CFAbsoluteTime at;
-			CFGregorianDate date;
-
-			date.day = tm.tm_mday;
-			date.hour = tm.tm_hour;
-			date.minute = tm.tm_min;
-			date.month = tm.tm_mon + 1;
-			date.second = tm.tm_sec;
-			date.year = tm.tm_year + 1900;
-
-			at = CFGregorianDateGetAbsoluteTime(date, tz);
-
-			CFDateRef rv = CFDateCreate(kCFAllocatorDefault, at);
-
-			CFRelease(tz);
-			return rv;
+            NSDate* rv = [NSDate dateWithTimeIntervalSince1970:mktime(&tm)];
+			return (__bridge CFDateRef)rv;
 		}
 		default:
 		{
@@ -1020,19 +1017,9 @@ void prettyPrintPlist(CFPropertyListRef what, int indentNum)
 	}
 	else if (typeId == CFDateGetTypeID())
 	{
-		CFAbsoluteTime t = CFDateGetAbsoluteTime((CFDateRef) what);
-		CFTimeZoneRef tz = CFTimeZoneCopyDefault();
-		CFGregorianDate d = CFAbsoluteTimeGetGregorianDate(t, tz);
-		struct tm tm;
-		char buf[150];
-
-		tm.tm_mday = d.day;
-		tm.tm_mon = d.month - 1;
-		tm.tm_year = d.year - 1900;
-		tm.tm_hour = d.hour;
-		tm.tm_min = d.minute;
-		tm.tm_sec = d.second;
-		tm.tm_wday = CFAbsoluteTimeGetDayOfWeek(t, tz);
+        time_t t = [(__bridge NSDate *)((CFDateRef) what) timeIntervalSince1970];
+        struct tm tm = *gmtime(&t);
+        char buf[150];
 
 		if (tm.tm_wday == 7)
 			tm.tm_wday = 0;
@@ -1042,8 +1029,6 @@ void prettyPrintPlist(CFPropertyListRef what, int indentNum)
 
 		strftime(buf, sizeof(buf), "%a %b %d %H:%M:%S %Z %Y", &tm);
 		printf("%s", buf);
-
-		CFRelease(tz);
 	}
 	else if (typeId == CFDataGetTypeID())
 	{
@@ -1076,7 +1061,14 @@ void doPrint(const char* whatStr)
 	}
 	else
 	{
-		CFDataRef data = CFPropertyListCreateXMLData(kCFAllocatorDefault, entry);
+		
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < 40000
+        CFDataRef data = CFPropertyListCreateXMLData(kCFAllocatorDefault, entry);
+#else
+        CFPropertyListFormat xml = kCFPropertyListXMLFormat_v1_0;
+        CFErrorRef err = NULL;
+        CFDataRef data = CFPropertyListCreateData(kCFAllocatorDefault, entry, xml, 0, &err);
+#endif
 
 		if (data != NULL)
 		{
@@ -1091,7 +1083,6 @@ void doPrint(const char* whatStr)
 void deleteEntry(const char* entry)
 {
 	CFPropertyListRef parent, existing;
-	CFPropertyListRef newValue;
 	char* leafName = NULL;
 
 	resolvePlistEntry(entry, &parent, &existing, &leafName, false);
