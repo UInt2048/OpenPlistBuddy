@@ -1,0 +1,9 @@
+Package: open-plistbuddy
+Version: 0.1.1-arm64
+Architecture: iphoneos-arm
+Maintainer: UInt2048
+Provides: plistbuddy
+Priority: optional
+Description: a property list editor
+ PlistBuddy is a property list editor in macOS. This package is a clone of 
+ PlistBuddy from Darling.

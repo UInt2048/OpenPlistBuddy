@@ -17,11 +17,12 @@ You should have received a copy of the GNU General Public License
 along with Darling.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <Foundation/Foundation.h>
-#include <CoreFoundation/CoreFoundation.h>
+#import <CoreFoundation/CoreFoundation.h>
+#import <Foundation/NSData.h>
+#import <Foundation/NSDate.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 bool processArgs(int argc, const char** argv, const char** command);
 void resolvePlistEntry(const char* whatStr, CFPropertyListRef* parent, CFPropertyListRef* entry, char** last, bool autoCreate);
